@@ -5,10 +5,10 @@ module Main where
 
 import Data.Char (ord, chr)
 import Data.Primitive.ByteArray
-import Data.List.Extra ((!?))
 import Data.Map (Map)
 import qualified Data.Map
 import Numeric (showHex)
+import Data.Maybe (listToMaybe)
 
 data Mnemonic = Nop
     | Hlt
@@ -97,6 +97,12 @@ newProcessor = Processor (replicate numRegisters 0) defaultFlags $ Data.Map.from
         ((0x0000, 0x1000), GenericDevice $ ReadOnlyMemory $ byteArrayFromList [34 :: Int]),
         ((0xfffe, 0xffff), GenericDevice $ StdIO ())
     ]
+
+-- like `!!` but returning `Maybe`
+infix 9 !?
+(!?) :: [a] -> Int -> Maybe a
+xs !? i | i < 0     = Nothing
+        | otherwise = listToMaybe (drop i xs)
 
 main :: IO ()
 main = do
