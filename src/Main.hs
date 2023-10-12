@@ -12,10 +12,17 @@ import Numeric (showHex)
 
 data Mnemonic = Nop
     | Hlt
+    | Cmp
     | Jmp
+    | Jz
+    | Jnz
+    | Jg
+    | Jgz
+    | Jl
+    | Jlz
     | Mov
     | Add
-    | Sub
+    | Cl
     deriving (Show, Eq)
 
 data Register = X0
@@ -35,8 +42,11 @@ data Instruction = Instruction Mnemonic [Argument]
 
 newtype Program = Program [Instruction] 
 
-newtype Flags = Flags {
-    halt :: Bool
+data Flags = Flags {
+    halt :: Bool,
+    zero :: Bool,
+    less :: Bool,
+    greater :: Bool
 }
 
 data Processor = Processor {
@@ -47,7 +57,7 @@ data Processor = Processor {
 
 instance Show Processor where
     show = foldl (++) "registers:\n" . zipWith showRegister [0..] . registers
-        where showRegister i r = "X" ++ show i ++ ":\t" ++ show r ++ "\n"
+        where showRegister i r = show (toEnum i :: Register) ++ ":\t" ++ show r ++ "\n"
 
 class Device a where
     readByte :: a -> Int -> IO Int
@@ -80,23 +90,22 @@ numRegisters :: Int
 numRegisters = 5
 
 defaultFlags :: Flags
-defaultFlags = Flags False
+defaultFlags = Flags False False False False
 
 newProcessor :: Processor
 newProcessor = Processor (replicate numRegisters 0) defaultFlags $ Data.Map.fromList [
-        ((0x0000, 0xf000), GenericDevice $ ReadOnlyMemory $ byteArrayFromList [34 :: Int]),
+        ((0x0000, 0x1000), GenericDevice $ ReadOnlyMemory $ byteArrayFromList [34 :: Int]),
         ((0xfffe, 0xffff), GenericDevice $ StdIO ())
     ]
 
 main :: IO ()
 main = do
     result <- runProgram newProcessor $ Program [
-            Instruction Nop [],
-            Instruction Mov [Register X0, Literal 1, Address 0x0000],
-            Instruction Mov [Register X1, Literal 35],
-            Instruction Add [Register X0, Register X1],
+            Instruction Mov [Register X0, Literal 65],
             Instruction Mov [Address 0xfffe, Literal 1, Register X0],
-            Instruction Jmp [Literal 0],
+            Instruction Add [Register X0, Literal 1],
+            Instruction Cmp [Register X0, Literal 91],
+            Instruction Jnz [Literal 1],
             Instruction Hlt []
         ]
     putChar '\n'
@@ -114,16 +123,41 @@ runInstruction :: Processor -> Instruction -> IO Processor
 
 -- Nop
 runInstruction cpu (Instruction Nop []) = return cpu
-runInstruction cpu (Instruction Nop _) = error "Nop: invalid instruction format."
 
 -- Hlt
 runInstruction cpu (Instruction Hlt []) = return $ haltCpu cpu
-runInstruction cpu (Instruction Hlt _) = error "Hlt: invalid instruciton format."
+
+-- Cmp
+runInstruction cpu (Instruction Cmp [Register a, Register b]) = return $ cmp cpu (readRegister cpu a) $ readRegister cpu b
+runInstruction cpu (Instruction Cmp [Register r, Literal l]) = return $ cmp cpu (readRegister cpu r) l
 
 -- Jmp
 runInstruction cpu (Instruction Jmp [Literal l]) = return $ writeIP cpu $ pred l
 runInstruction cpu (Instruction Jmp [Register r]) = return $ writeIP cpu $ pred $ readRegister cpu r
-runInstruction cpu (Instruction Jmp _) = error "Jmp: invalid instruciton format."
+
+-- Jz
+runInstruction cpu (Instruction Jz [Literal l]) = return $ if zero $ flags cpu then writeIP cpu $ pred l else cpu
+runInstruction cpu (Instruction Jz [Register r]) = return $ if zero $ flags cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
+
+-- Jnz
+runInstruction cpu (Instruction Jnz [Literal l]) = return $ if not $ zero $ flags cpu then writeIP cpu $ pred l else cpu
+runInstruction cpu (Instruction Jnz [Register r]) = return $ if not $ zero $ flags cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
+
+-- Jg
+runInstruction cpu (Instruction Jg [Literal l]) = return $ if greater $ flags cpu then writeIP cpu $ pred l else cpu
+runInstruction cpu (Instruction Jg [Register r]) = return $ if greater $ flags cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
+
+-- Jgz
+runInstruction cpu (Instruction Jgz [Literal l]) = return $ if (greater . flags) cpu || (zero . flags) cpu then writeIP cpu $ pred l else cpu
+runInstruction cpu (Instruction Jgz [Register r]) = return $ if (greater . flags) cpu || (zero . flags) cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
+
+-- Jl
+runInstruction cpu (Instruction Jl [Literal l]) = return $ if less $ flags cpu then writeIP cpu $ pred l else cpu
+runInstruction cpu (Instruction Jl [Register r]) = return $ if less $ flags cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
+
+-- Jlz
+runInstruction cpu (Instruction Jlz [Literal l]) = return $ if (less . flags) cpu || (zero . flags) cpu then writeIP cpu $ pred l else cpu
+runInstruction cpu (Instruction Jlz [Register r]) = return $ if (less . flags) cpu || (zero . flags) cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
 
 -- Mov
 runInstruction cpu (Instruction Mov [Register r, Literal l]) = return $ writeRegister cpu r l
@@ -134,14 +168,22 @@ runInstruction cpu (Instruction Mov [Address a, Literal 1, Register r]) = do
 runInstruction cpu (Instruction Mov [Register r, Literal 1, Address a]) = do
     byte <- readByteFromDevice cpu a
     return $ writeRegister cpu r byte
-runInstruction cpu (Instruction Mov _) = error "Mov: invalid instruction format."
 
 -- Add
 runInstruction cpu (Instruction Add [Register r, Literal l]) = return $ writeRegister cpu r $ readRegister cpu r + l
 runInstruction cpu (Instruction Add [Register a, Register b]) = return $ writeRegister cpu a $ readRegister cpu a + readRegister cpu b
-runInstruction cpu (Instruction Add _) = error "Add: invalid instruction format."
 
-runInstruction cpu instr = error $ "instruction `" ++ show instr ++ "` is not implemented."
+-- Cl
+runInstruction cpu (Instruction Cl []) = return $ clearFlags cpu
+
+-- default case
+runInstruction cpu (Instruction mnemonic _) = error $ show mnemonic ++ ": invalid instruction format."
+
+-- CPU comparisons
+
+cmp :: Processor -> Int -> Int -> Processor
+cmp cpu a b = setFlags cpu flags' { zero = a == b, less = a < b, greater = a > b }
+    where flags' = flags cpu
 
 -- CPU registers:
 
@@ -150,7 +192,7 @@ readRegister cpu r = registers cpu !! fromEnum r
 
 writeRegister :: Processor -> Register -> Int -> Processor
 writeRegister cpu r v = Processor (updateRegister (registers cpu) (fromEnum r) v) (flags cpu) $ devices cpu
-    where updateRegister regs i v = take i regs ++ [v] ++ drop (i + 1) regs
+    where updateRegister regs i v = take i regs ++ [v] ++ drop (succ i) regs
 
 readIP :: Processor -> Int
 readIP cpu = readRegister cpu IP
@@ -167,10 +209,16 @@ halted :: Processor -> Bool
 halted = halt . flags
 
 setHalted :: Flags -> Flags
-setHalted _ = Flags True
+setHalted flags = flags { halt = True }
 
 haltCpu :: Processor -> Processor
 haltCpu = Processor <$> registers <*> setHalted . flags <*> devices
+
+setFlags :: Processor -> Flags -> Processor
+setFlags cpu flags = cpu { flags = flags }
+
+clearFlags :: Processor -> Processor
+clearFlags cpu = cpu { flags = defaultFlags }
 
 -- general device IO:
 
