@@ -63,18 +63,16 @@ class Device a where
     readByte :: a -> Int -> IO Int
     writeByte :: a -> Int -> Int -> IO ()
 
-data GenericDevice = forall a. Device a => GenericDevice a
+data GenericDevice = forall a. Device a => GenericDevice {
+    device :: a,
+    base :: Int
+}
 
 instance Device GenericDevice where
-    readByte (GenericDevice a) = readByte a
-    writeByte (GenericDevice a) = writeByte a
+    readByte (GenericDevice a base) addr = readByte a $ addr - base
+    writeByte (GenericDevice a base) addr = writeByte a $ addr - base
 
-data Memory a = Memory {
-    bytes :: MutableByteArray a,
-    size :: Int
-} 
-
-newtype StdIO = StdIO ()
+data StdIO = StdIO
 instance Device StdIO where
     readByte _ _ = ord <$> getChar
     writeByte _ _ = putChar . chr 
@@ -94,9 +92,10 @@ defaultFlags = Flags False False False False
 
 newProcessor :: Processor
 newProcessor = Processor (replicate numRegisters 0) defaultFlags $ Data.Map.fromList [
-        ((0x0000, 0x1000), GenericDevice $ ReadOnlyMemory $ byteArrayFromList [34 :: Int]),
-        ((0xfffe, 0xffff), GenericDevice $ StdIO ())
+        device 0x0000 0xf000 $ ReadOnlyMemory $ byteArrayFromList [34 :: Int],
+        device 0xfffe 0xffff StdIO
     ]
+    where device lo hi d = ((lo, hi), GenericDevice d lo)
 
 -- like `!!` but returning `Maybe`
 infix 9 !?
