@@ -20,6 +20,9 @@ data Mnemonic = Nop
     | Jlz
     | Mov
     | Add
+    | Sub
+    | Mul
+    | Div
     | Cl
     deriving (Show, Eq)
 

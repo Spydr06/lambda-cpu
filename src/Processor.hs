@@ -17,11 +17,12 @@ data Flags = Flags {
     halt :: Bool,
     zero :: Bool,
     less :: Bool,
-    greater :: Bool
+    greater :: Bool,
+    carry :: Bool
 }
 
 defaultFlags :: Flags
-defaultFlags = Flags False False False False
+defaultFlags = Flags False False False False False
 
 data Processor = Processor {
     registers :: [Int],
@@ -60,32 +61,32 @@ runInstruction cpu (Instruction Cmp [Register a, Register b]) = return $ cmp cpu
 runInstruction cpu (Instruction Cmp [Register r, Literal l]) = return $ cmp cpu (readRegister cpu r) l
 
 -- Jmp
-runInstruction cpu (Instruction Jmp [Literal l]) = return $ writeIP cpu $ pred l
-runInstruction cpu (Instruction Jmp [Register r]) = return $ writeIP cpu $ pred $ readRegister cpu r
+runInstruction cpu (Instruction Jmp [Literal l]) = return $ jmp cpu l True
+runInstruction cpu (Instruction Jmp [Register r]) = return $ jmp cpu (readRegister cpu r) True
 
 -- Jz
-runInstruction cpu (Instruction Jz [Literal l]) = return $ if zero $ flags cpu then writeIP cpu $ pred l else cpu
-runInstruction cpu (Instruction Jz [Register r]) = return $ if zero $ flags cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
+runInstruction cpu (Instruction Jz [Literal l]) = return $ jmp cpu l $ zero $ flags cpu
+runInstruction cpu (Instruction Jz [Register r]) = return $ jmp cpu (readRegister cpu r) $ zero $ flags cpu
 
 -- Jnz
-runInstruction cpu (Instruction Jnz [Literal l]) = return $ if not $ zero $ flags cpu then writeIP cpu $ pred l else cpu
-runInstruction cpu (Instruction Jnz [Register r]) = return $ if not $ zero $ flags cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
+runInstruction cpu (Instruction Jnz [Literal l]) = return $ jmp cpu l $ not $ zero $ flags cpu
+runInstruction cpu (Instruction Jnz [Register r]) = return $ jmp cpu (readRegister cpu r) $ not $ zero $ flags cpu
 
 -- Jg
-runInstruction cpu (Instruction Jg [Literal l]) = return $ if greater $ flags cpu then writeIP cpu $ pred l else cpu
-runInstruction cpu (Instruction Jg [Register r]) = return $ if greater $ flags cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
+runInstruction cpu (Instruction Jg [Literal l]) = return $ jmp cpu l $ greater $ flags cpu
+runInstruction cpu (Instruction Jg [Register r]) = return $ jmp cpu (readRegister cpu r) $ greater $ flags cpu
 
 -- Jgz
-runInstruction cpu (Instruction Jgz [Literal l]) = return $ if (greater . flags) cpu || (zero . flags) cpu then writeIP cpu $ pred l else cpu
-runInstruction cpu (Instruction Jgz [Register r]) = return $ if (greater . flags) cpu || (zero . flags) cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
+runInstruction cpu (Instruction Jgz [Literal l]) = return $ jmp cpu l $ (greater . flags) cpu || (zero . flags) cpu
+runInstruction cpu (Instruction Jgz [Register r]) = return $ jmp cpu (readRegister cpu r) $ (greater . flags) cpu || (zero . flags) cpu
 
 -- Jl
-runInstruction cpu (Instruction Jl [Literal l]) = return $ if less $ flags cpu then writeIP cpu $ pred l else cpu
-runInstruction cpu (Instruction Jl [Register r]) = return $ if less $ flags cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
+runInstruction cpu (Instruction Jl [Literal l]) = return $ jmp cpu l $ less $ flags cpu
+runInstruction cpu (Instruction Jl [Register r]) = return $ jmp cpu (readRegister cpu r) $ less $ flags cpu
 
 -- Jlz
-runInstruction cpu (Instruction Jlz [Literal l]) = return $ if (less . flags) cpu || (zero . flags) cpu then writeIP cpu $ pred l else cpu
-runInstruction cpu (Instruction Jlz [Register r]) = return $ if (less . flags) cpu || (zero . flags) cpu then writeIP cpu $ pred $ readRegister cpu r else cpu
+runInstruction cpu (Instruction Jlz [Literal l]) = return $ jmp cpu l $ (less . flags) cpu || (zero . flags) cpu
+runInstruction cpu (Instruction Jlz [Register r]) = return $ jmp cpu (readRegister cpu r) $ (less . flags) cpu || (zero . flags) cpu
 
 -- Mov
 runInstruction cpu (Instruction Mov [Register r, Literal l]) = return $ writeRegister cpu r l
@@ -98,8 +99,20 @@ runInstruction cpu (Instruction Mov [Register r, Literal 1, Address a]) = do
     return $ writeRegister cpu r byte
 
 -- Add
-runInstruction cpu (Instruction Add [Register r, Literal l]) = return $ writeRegister cpu r $ readRegister cpu r + l
-runInstruction cpu (Instruction Add [Register a, Register b]) = return $ writeRegister cpu a $ readRegister cpu a + readRegister cpu b
+runInstruction cpu (Instruction Add [Register a, Register b]) = return $ binop cpu a (readRegister cpu b) (+)
+runInstruction cpu (Instruction Add [Register r, Literal l]) = return $ binop cpu r l (+)
+
+-- Sub
+runInstruction cpu (Instruction Sub [Register a, Register b]) = return $ binop cpu a (readRegister cpu b) (-)
+runInstruction cpu (Instruction Sub [Register r, Literal l]) = return $ binop cpu r l (-)
+
+-- Mul
+runInstruction cpu (Instruction Mul [Register a, Register b]) = return $ binop cpu a (readRegister cpu b) (*)
+runInstruction cpu (Instruction Mul [Register r, Literal l]) = return $ binop cpu r l (*)
+
+-- Div
+runInstruction cpu (Instruction Div [Register a, Register b]) = return $ binop cpu a (readRegister cpu b) div
+runInstruction cpu (Instruction Div [Register r, Literal l]) = return $ binop cpu r l div
 
 -- Cl
 runInstruction cpu (Instruction Cl []) = return $ clearFlags cpu
@@ -112,6 +125,12 @@ runInstruction cpu (Instruction mnemonic _) = error $ show mnemonic ++ ": invali
 cmp :: Processor -> Int -> Int -> Processor
 cmp cpu a b = setFlags cpu flags' { zero = a == b, less = a < b, greater = a > b }
     where flags' = flags cpu
+
+jmp :: Processor -> Int -> Bool -> Processor
+jmp cpu addr doJmp = if doJmp then writeIP cpu $ pred addr else cpu
+
+binop :: Processor -> Register -> Int -> (Int -> Int -> Int) -> Processor
+binop cpu a b op = writeRegister cpu a $ readRegister cpu a `op` b
 
 -- CPU registers:
 
