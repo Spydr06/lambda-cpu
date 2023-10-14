@@ -57,61 +57,61 @@ runInstruction cpu (Instruction Nop []) = return cpu
 runInstruction cpu (Instruction Hlt []) = return $ haltCpu cpu
 
 -- Cmp
-runInstruction cpu (Instruction Cmp [Register a, Register b]) = return $ cmp cpu (readRegister cpu a) $ readRegister cpu b
-runInstruction cpu (Instruction Cmp [Register r, Literal l]) = return $ cmp cpu (readRegister cpu r) l
+runInstruction cpu (Instruction Cmp [Register a, Register b]) = return $ cmp cpu (registerValue cpu a) $ registerValue cpu b
+runInstruction cpu (Instruction Cmp [Register r, Literal l]) = return $ cmp cpu (registerValue cpu r) l
 
 -- Jmp
 runInstruction cpu (Instruction Jmp [Literal l]) = return $ jmp cpu l True
-runInstruction cpu (Instruction Jmp [Register r]) = return $ jmp cpu (readRegister cpu r) True
+runInstruction cpu (Instruction Jmp [Register r]) = return $ jmp cpu (registerValue cpu r) True
 
 -- Jz
 runInstruction cpu (Instruction Jz [Literal l]) = return $ jmp cpu l $ zero $ flags cpu
-runInstruction cpu (Instruction Jz [Register r]) = return $ jmp cpu (readRegister cpu r) $ zero $ flags cpu
+runInstruction cpu (Instruction Jz [Register r]) = return $ jmp cpu (registerValue cpu r) $ zero $ flags cpu
 
 -- Jnz
 runInstruction cpu (Instruction Jnz [Literal l]) = return $ jmp cpu l $ not $ zero $ flags cpu
-runInstruction cpu (Instruction Jnz [Register r]) = return $ jmp cpu (readRegister cpu r) $ not $ zero $ flags cpu
+runInstruction cpu (Instruction Jnz [Register r]) = return $ jmp cpu (registerValue cpu r) $ not $ zero $ flags cpu
 
 -- Jg
 runInstruction cpu (Instruction Jg [Literal l]) = return $ jmp cpu l $ greater $ flags cpu
-runInstruction cpu (Instruction Jg [Register r]) = return $ jmp cpu (readRegister cpu r) $ greater $ flags cpu
+runInstruction cpu (Instruction Jg [Register r]) = return $ jmp cpu (registerValue cpu r) $ greater $ flags cpu
 
 -- Jgz
 runInstruction cpu (Instruction Jgz [Literal l]) = return $ jmp cpu l $ (greater . flags) cpu || (zero . flags) cpu
-runInstruction cpu (Instruction Jgz [Register r]) = return $ jmp cpu (readRegister cpu r) $ (greater . flags) cpu || (zero . flags) cpu
+runInstruction cpu (Instruction Jgz [Register r]) = return $ jmp cpu (registerValue cpu r) $ (greater . flags) cpu || (zero . flags) cpu
 
 -- Jl
 runInstruction cpu (Instruction Jl [Literal l]) = return $ jmp cpu l $ less $ flags cpu
-runInstruction cpu (Instruction Jl [Register r]) = return $ jmp cpu (readRegister cpu r) $ less $ flags cpu
+runInstruction cpu (Instruction Jl [Register r]) = return $ jmp cpu (registerValue cpu r) $ less $ flags cpu
 
 -- Jlz
 runInstruction cpu (Instruction Jlz [Literal l]) = return $ jmp cpu l $ (less . flags) cpu || (zero . flags) cpu
-runInstruction cpu (Instruction Jlz [Register r]) = return $ jmp cpu (readRegister cpu r) $ (less . flags) cpu || (zero . flags) cpu
+runInstruction cpu (Instruction Jlz [Register r]) = return $ jmp cpu (registerValue cpu r) $ (less . flags) cpu || (zero . flags) cpu
 
 -- Mov
 runInstruction cpu (Instruction Mov [Register r, Literal l]) = return $ writeRegister cpu r l
-runInstruction cpu (Instruction Mov [Register a, Register b]) = return $ writeRegister cpu a $ readRegister cpu b
+runInstruction cpu (Instruction Mov [Register a, Register b]) = return $ writeRegister cpu a $ registerValue cpu b
 runInstruction cpu (Instruction Mov [Address a, Literal 1, Register r]) = do
-    writeByteToDevice cpu a $ readRegister cpu r
+    writeByteToDevice cpu a $ registerValue cpu r
     return cpu
 runInstruction cpu (Instruction Mov [Register r, Literal 1, Address a]) = do
     byte <- readByteFromDevice cpu a
     return $ writeRegister cpu r byte
 
 -- Add
-runInstruction cpu (Instruction Add [Register a, Register b]) = return $ binop cpu a (readRegister cpu b) (+)
+runInstruction cpu (Instruction Add [Register a, Register b]) = return $ binop cpu a (registerValue cpu b) (+)
 runInstruction cpu (Instruction Add [Register r, Literal l]) = return $ binop cpu r l (+)
 
 -- Sub
-runInstruction cpu (Instruction Sub [Register a, Register b]) = return $ binop cpu a (readRegister cpu b) (-)
+runInstruction cpu (Instruction Sub [Register a, Register b]) = return $ binop cpu a (registerValue cpu b) (-)
 runInstruction cpu (Instruction Sub [Register r, Literal l]) = return $ binop cpu r l (-)
 
 -- Mul
-runInstruction cpu (Instruction Mul [Register a, Register b]) = return $ binop cpu a (readRegister cpu b) (*)
+runInstruction cpu (Instruction Mul [Register a, Register b]) = return $ binop cpu a (registerValue cpu b) (*)
 runInstruction cpu (Instruction Mul [Register r, Literal l]) = return $ binop cpu r l (*)
 
 -- Div
-runInstruction cpu (Instruction Div [Register a, Register b]) = return $ binop cpu a (readRegister cpu b) div
+runInstruction cpu (Instruction Div [Register a, Register b]) = return $ binop cpu a (registerValue cpu b) div
 runInstruction cpu (Instruction Div [Register r, Literal l]) = return $ binop cpu r l div
 
 -- Cl
@@ -130,19 +130,19 @@ jmp :: Processor -> Int -> Bool -> Processor
 jmp cpu addr doJmp = if doJmp then writeIP cpu $ pred addr else cpu
 
 binop :: Processor -> Register -> Int -> (Int -> Int -> Int) -> Processor
-binop cpu a b op = writeRegister cpu a $ readRegister cpu a `op` b
+binop cpu a b op = writeRegister cpu a $ registerValue cpu a `op` b
 
 -- CPU registers:
 
-readRegister :: Processor -> Register -> Int
-readRegister cpu r = registers cpu !! fromEnum r
+registerValue :: Processor -> Register -> Int
+registerValue cpu r = registers cpu !! fromEnum r
 
 writeRegister :: Processor -> Register -> Int -> Processor
 writeRegister cpu r v = Processor (updateRegister (registers cpu) (fromEnum r) v) (flags cpu) $ devices cpu
     where updateRegister regs i v = take i regs ++ [v] ++ drop (succ i) regs
 
 readIP :: Processor -> Int
-readIP cpu = readRegister cpu IP
+readIP cpu = registerValue cpu IP
 
 writeIP :: Processor -> Int -> Processor
 writeIP cpu = writeRegister cpu IP

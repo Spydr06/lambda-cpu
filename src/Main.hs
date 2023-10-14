@@ -7,6 +7,9 @@ import qualified Data.Map
 import Instruction
 import Device
 import Processor
+import Assembler
+import System.Environment (getArgs, getProgName)
+import System.Exit (exitFailure)
 
 newProcessor :: Processor
 newProcessor = Processor (replicate numRegisters 0) defaultFlags $ Data.Map.fromList [
@@ -17,13 +20,20 @@ newProcessor = Processor (replicate numRegisters 0) defaultFlags $ Data.Map.from
 
 main :: IO ()
 main = do
-    result <- runProgram newProcessor $ Program [
-            Instruction Mov [Register X0, Literal 65],
-            Instruction Mov [Address 0xfffe, Literal 1, Register X0],
-            Instruction Add [Register X0, Literal 1],
-            Instruction Cmp [Register X0, Literal 91],
-            Instruction Jnz [Literal 1],
-            Instruction Hlt []
-        ]
-    putChar '\n'
-    print result
+    args <- getArgs
+    case args of
+        [filename] -> do
+            contents <- readFile filename
+            case assemble filename contents of
+                Left program -> do
+                    print program
+                    cpu <- runProgram newProcessor program
+                    print cpu
+                Right e -> do
+                    print e
+                    exitFailure
+        _ -> do
+            pname <- getProgName
+            putStrLn $ "Usage: " ++ pname ++ " [filename]"
+            exitFailure
+   
