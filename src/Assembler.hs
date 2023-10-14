@@ -77,9 +77,7 @@ countTrailingSpace = count 0
 
 parseInstruction :: Assembler -> Position -> String -> [String] -> Either Assembler ParseError
 parseInstruction a pos mnStr args = case readMnemonic mnStr of
-    Just mnemonic -> case extractError $ map (parseArgument pos) args of
-        Left args' -> Left $ appendInstruction a $ Instruction mnemonic args'
-        Right err -> Right err 
+    Just mnemonic -> left (appendInstruction a . Instruction mnemonic) $ extractError $ map (parseArgument pos) args
     Nothing -> Right $ ParseError pos { end = start pos + length mnStr } $ "unknown mnemonic `" ++ mnStr ++ "`."
 
 extractError :: [Either a b] -> Either [a] b
@@ -99,7 +97,7 @@ parseArgument p s | null s = error s
                   | head s == '$' = left Literal $ parseNumber p $ tail s
                   | otherwise = case parseNumber p s of
                       Left i -> Left $ Address i
-                      Right e -> Right e-- parse label or addr
+                      Right e -> undefined -- parse label or addr
 
 parseNumber :: Position -> String -> Either Int ParseError
 parseNumber p ('0':x:xs) | x == 'x' || x == 'X' = Left $ fst $ head $ readHex xs
